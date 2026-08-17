@@ -80,6 +80,17 @@ fi
 
 echo "==> Building AppImage..."
 
+if [[ -z "${APPIMAGETOOL:-}" ]]; then
+    if [[ -f "./appimagetool" ]]; then
+        APPIMAGETOOL="$PWD/appimagetool"
+        chmod +x "$APPIMAGETOOL"
+    else
+        echo "ERROR: appimagetool was not found."
+        echo "Download appimagetool or set APPIMAGETOOL manually."
+        exit 1
+    fi
+fi
+
 "$APPIMAGETOOL" \
     "$APPDIR" \
     "$OUTPUT"
