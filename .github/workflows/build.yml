@@ -1,0 +1,72 @@
+name: Build VS Code AppImage
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build VS Code AppImage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          echo "Building VS Code version: $VERSION"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            curl \
+            file \
+            libfuse2
+
+      - name: Download appimagetool
+        run: |
+          curl \
+            --fail \
+            --location \
+            --retry 3 \
+            --output appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/latest/download/appimagetool-x86_64.AppImage"
+
+          chmod +x appimagetool
+
+      - name: Build AppImage
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          APPIMAGETOOL: ${{ github.workspace }}/appimagetool
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Verify AppImage
+        run: |
+          file "VSCode-x86_64-${{ steps.version.outputs.version }}.AppImage"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          gh release create \
+            "$GITHUB_REF_NAME" \
+            "VSCode-x86_64-${VERSION}.AppImage" \
+            --title "VS Code ${VERSION} AppImage" \
+            --generate-notes
