@@ -5,6 +5,26 @@ set -euo pipefail
 VERSION="${VERSION:?VERSION is not set}"
 ARCH="${ARCH:-x86_64}"
 
+case "$ARCH" in
+    x86_64)
+        TARGET="linux-deb-x64"
+        APPIMAGE_ARCH="x86_64"
+        ;;
+    arm32)
+        TARGET="linux-deb-armhf"
+        APPIMAGE_ARCH="armhf"
+        ;;
+    arm64)
+        TARGET="linux-deb-arm64"
+        APPIMAGE_ARCH="aarch64"
+        ;;
+    *)
+        echo "ERROR: Unsupported architecture: $ARCH"
+        echo "Supported architectures: x86_64, arm32, arm64"
+        exit 1
+        ;;
+esac
+
 APPDIR="AppDir"
 OUTPUT="VSCode-${ARCH}-${VERSION}.AppImage"
 
@@ -22,7 +42,7 @@ curl \
     --location \
     --retry 3 \
     --output "$DEB" \
-    "https://update.code.visualstudio.com/${VERSION}/linux-deb-x64/stable"
+    "https://update.code.visualstudio.com/${VERSION}/${TARGET}/stable"
 
 echo "==> Extracting DEB..."
 
@@ -91,7 +111,7 @@ if [[ -z "${APPIMAGETOOL:-}" ]]; then
     fi
 fi
 
-"$APPIMAGETOOL" \
+ARCH="$APPIMAGE_ARCH" "$APPIMAGETOOL" \
     "$APPDIR" \
     "$OUTPUT"
 

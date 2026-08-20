@@ -10,8 +10,24 @@ permissions:
 
 jobs:
   build:
-    name: Build VS Code AppImage
-    runs-on: ubuntu-latest
+    name: Build VS Code AppImage (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            appimage_arch: x86_64
+
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            appimage_arch: aarch64
+
+          - arch: arm32
+            runner: ubuntu-24.04-arm
+            appimage_arch: armhf
 
     steps:
       - name: Checkout repository
@@ -26,6 +42,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           echo "Building VS Code version: $VERSION"
+          echo "Architecture: ${{ matrix.arch }}"
 
       - name: Install dependencies
         run: |
@@ -34,30 +51,77 @@ jobs:
           sudo apt-get install -y \
             curl \
             file \
-            libfuse2
+            libfuse2 \
+            binutils
 
       - name: Download appimagetool
+        shell: bash
         run: |
+          case "${{ matrix.appimage_arch }}" in
+            x86_64)
+              TOOL_ARCH="x86_64"
+              ;;
+            aarch64)
+              TOOL_ARCH="aarch64"
+              ;;
+            armhf)
+              TOOL_ARCH="armhf"
+              ;;
+            *)
+              echo "Unsupported AppImage architecture"
+              exit 1
+              ;;
+          esac
+
           curl \
             --fail \
             --location \
             --retry 3 \
             --output appimagetool \
-            "https://github.com/AppImage/appimagetool/releases/latest/download/appimagetool-x86_64.AppImage"
+            "https://github.com/AppImage/appimagetool/releases/latest/download/appimagetool-${TOOL_ARCH}.AppImage"
 
           chmod +x appimagetool
 
       - name: Build AppImage
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          ARCH: ${{ matrix.arch }}
           APPIMAGETOOL: ${{ github.workspace }}/appimagetool
         run: |
           chmod +x build.sh
           ./build.sh
 
       - name: Verify AppImage
+        shell: bash
         run: |
-          file "VSCode-x86_64-${{ steps.version.outputs.version }}.AppImage"
+          OUTPUT="VSCode-${{ matrix.arch }}-${{ steps.version.outputs.version }}.AppImage"
+
+          file "$OUTPUT"
+
+          if [[ ! -f "$OUTPUT" ]]; then
+            echo "ERROR: AppImage was not created:"
+            echo "$OUTPUT"
+            exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-appimage-${{ matrix.arch }}
+          path: VSCode-${{ matrix.arch }}-${{ steps.version.outputs.version }}.AppImage
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          pattern: vscode-appimage-*
+          merge-multiple: true
 
       - name: Create GitHub Release
         env:
@@ -67,6 +131,8 @@ jobs:
 
           gh release create \
             "$GITHUB_REF_NAME" \
-            "VSCode-x86_64-${VERSION}.AppImage" \
+            release/VSCode-x86_64-${VERSION}.AppImage \
+            release/VSCode-arm64-${VERSION}.AppImage \
+            release/VSCode-arm32-${VERSION}.AppImage \
             --title "VS Code ${VERSION} AppImage" \
             --generate-notes
